@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { Link } from 'react-router-dom';
-import api from '../api/axiosConfig';
 import { AuthContext } from '../context/AuthContext';
 import { BookOpen, PlayCircle, Award, Download, TrendingUp, Sparkles, BookMarked } from 'lucide-react';
 import GlassCard from '../components/ui/GlassCard';
@@ -74,7 +73,7 @@ const CertificateModal = ({ course, user, onClose }) => {
             <body>
                 <div class="certificate">
                     <div class="badge">COMPLETED</div>
-                    <div class="header">Hell Paradise Learning</div>
+                    <div class="header">LMS02</div>
                     <div class="title">Certificate of Completion</div>
                     <div class="subtitle">This is to certify that</div>
                     <div class="recipient">${user?.name || 'Student'}</div>
@@ -119,7 +118,7 @@ const CertificateModal = ({ course, user, onClose }) => {
                 <div className="p-8 bg-white/5">
                     <div style={{ border: '8px solid #6366f1', padding: '40px', textAlign: 'center', position: 'relative', background: '#fff' }}>
                         <div style={{ position: 'absolute', top: '15px', left: '15px', right: '15px', bottom: '15px', border: '2px solid #6366f1', pointerEvents: 'none' }}></div>
-                        <div style={{ fontSize: '12px', color: '#6366f1', letterSpacing: '3px', textTransform: 'uppercase', marginBottom: '15px' }}>HELL PARADISE LEARNING</div>
+                        <div style={{ fontSize: '12px', color: '#6366f1', letterSpacing: '3px', textTransform: 'uppercase', marginBottom: '15px' }}>LMS02</div>
                         <div style={{ fontFamily: 'Georgia, serif', fontSize: '36px', color: '#1e293b', marginBottom: '8px' }}>Certificate of Completion</div>
                         <div style={{ fontSize: '14px', color: '#64748b', marginBottom: '30px' }}>This is to certify that</div>
                         <div style={{ fontFamily: 'Georgia, serif', fontSize: '28px', color: '#6366f1', marginBottom: '15px' }}>{user?.name || 'Student'}</div>
@@ -148,32 +147,51 @@ const Dashboard = () => {
 
     useEffect(() => {
         const fetchDashboardData = async () => {
+            if (!user?.uid) return;
             try {
-                // Fetch enrolled courses
-                const res = await api.get('/my-courses');
-                const coursesData = res.data;
+                const { collection, getDocs, query, where, doc, getDoc } = require('firebase/firestore');
+                const { db } = require('../firebase');
 
-                const coursesWithProgress = await Promise.all(coursesData.map(async (course) => {
-                    try {
-                        const [progRes, lastLessonRes] = await Promise.all([
-                            api.get(`/progress/${course.course_id}/percentage`),
-                            api.get(`/progress/${course.course_id}/last-lesson`)
-                        ]);
-                        return {
-                            ...course,
-                            progress: progRes.data.percentage,
-                            last_lesson_id: lastLessonRes.data.last_lesson_id
-                        };
-                    } catch (e) {
-                        return { ...course, progress: 0, last_lesson_id: null };
-                    }
-                }));
+                // 1. Fetch user's enrollments
+                const enrollmentsRef = collection(db, 'enrollments');
+                const enrollmentsQ = query(enrollmentsRef, where('student_id', '==', user.uid));
+                const enrollmentsSnap = await getDocs(enrollmentsQ);
+                
+                const enrolledCourseIds = enrollmentsSnap.docs.map(d => d.data().course_id);
+                
+                // 2. Fetch details for enrolled courses + basic progress info
+                let enrolledCourses = [];
+                if (enrolledCourseIds.length > 0) {
+                    enrolledCourses = await Promise.all(enrolledCourseIds.map(async (cid) => {
+                        try {
+                            const courseDoc = await getDoc(doc(db, 'courses', cid));
+                            if (!courseDoc.exists()) return null;
+                            const data = courseDoc.data();
+                            
+                            // Mock progress or fetch from progress collection
+                            const progRef = collection(db, `users/${user.uid}/progress`);
+                            const progSnap = await getDocs(query(progRef, where('course_id', '==', cid)));
+                            // Calculate simple percentage if you track total lessons etc.
+                            // For now, defaulting to 0 or whatever we have stored.
+                            let completed = 0;
+                            progSnap.forEach(p => { if (p.data().status === 'completed') completed++; });
+                            
+                            const totalLessons = data.total_lessons || 10; // dummy fallback
+                            const percentage = completed > 0 ? Math.round((completed / totalLessons) * 100) : 0;
+                            
+                            return { course_id: cid, ...data, progress: percentage > 100 ? 100 : percentage, last_lesson_id: null };
+                        } catch (e) {
+                            return null;
+                        }
+                    }));
+                }
+                
+                setMyCourses(enrolledCourses.filter(Boolean));
 
-                setMyCourses(coursesWithProgress);
-
-                // Fetch all courses for fake "Recommended" and "Trending"
-                const allRes = await api.get('/courses');
-                setAllCourses(allRes.data);
+                // 3. Fetch all courses for fake "Recommended" and "Trending"
+                const allCoursesSnap = await getDocs(collection(db, 'courses'));
+                const allC = allCoursesSnap.docs.map(d => ({ course_id: d.id, ...d.data() }));
+                setAllCourses(allC);
                 
             } catch (err) {
                 console.error(err);
@@ -181,12 +199,21 @@ const Dashboard = () => {
             setLoading(false);
         };
         fetchDashboardData();
-    }, []);
+    }, [user]);
 
     const handleUnenroll = async (courseId) => {
         if (window.confirm('Are you sure you want to drop this course? All progress will be lost.')) {
             try {
-                await api.delete(`/enroll/${courseId}`);
+                const { doc, deleteDoc, collection, query, where, getDocs } = require('firebase/firestore');
+                const { db } = require('../firebase');
+                
+                // Find enrollment doc id
+                const enrollmentsQ = query(collection(db, 'enrollments'), where('student_id', '==', user.uid), where('course_id', '==', courseId));
+                const snap = await getDocs(enrollmentsQ);
+                snap.forEach(async (d) => {
+                    await deleteDoc(doc(db, 'enrollments', d.id));
+                });
+                
                 setMyCourses(myCourses.filter(c => c.course_id !== courseId));
             } catch (err) {
                 console.error('Failed to unenroll', err);

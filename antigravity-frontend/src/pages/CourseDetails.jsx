@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import api from '../api/axiosConfig';
 import { AuthContext } from '../context/AuthContext';
 import { PlayCircle, Clock, BookOpen, User, CheckCircle2 } from 'lucide-react';
 import PaymentModal from '../components/PaymentModal';
 import AnimatedButton from '../components/ui/AnimatedButton';
-import GlassCard from '../components/ui/GlassCard';
 import { motion } from 'framer-motion';
+
+import { db } from '../firebase';
+import { doc, getDoc, collection, getDocs, query, where, addDoc } from 'firebase/firestore';
 
 const CourseDetails = () => {
     const { id } = useParams();
@@ -21,14 +22,36 @@ const CourseDetails = () => {
     useEffect(() => {
         const fetchCourse = async () => {
             try {
-                const res = await api.get(`/courses/${id}`);
-                setCourse(res.data);
+                // Fetch course docs
+                const courseDoc = await getDoc(doc(db, 'courses', id));
+                if (!courseDoc.exists()) {
+                    setLoading(false);
+                    return;
+                }
+                
+                let courseData = { course_id: id, ...courseDoc.data(), sections: [] };
+
+                // Fetch sections
+                const sectionsSnap = await getDocs(collection(db, `courses/${id}/sections`));
+                for (let secDoc of sectionsSnap.docs) {
+                    let secData = { section_id: secDoc.id, ...secDoc.data(), lessons: [] };
+                    
+                    // Fetch lessons for section
+                    const lessonsSnap = await getDocs(collection(db, `courses/${id}/sections/${secDoc.id}/lessons`));
+                    secData.lessons = lessonsSnap.docs.map(lDoc => ({ lesson_id: lDoc.id, ...lDoc.data() })).sort((a,b) => a.order - b.order);
+                    
+                    courseData.sections.push(secData);
+                }
+                courseData.sections.sort((a,b) => a.order_number - b.order_number);
+
+                setCourse(courseData);
 
                 if (user) {
-                    try {
-                        const enrollRes = await api.get(`/enrollments/${id}`);
-                        setIsEnrolled(enrollRes.data.isEnrolled);
-                    } catch (e) { }
+                    const enrollQ = query(collection(db, 'enrollments'), where('student_id', '==', user.uid), where('course_id', '==', id));
+                    const enrollSnap = await getDocs(enrollQ);
+                    if (!enrollSnap.empty) {
+                        setIsEnrolled(true);
+                    }
                 }
             } catch (err) {
                 console.error(err);
@@ -57,23 +80,16 @@ const CourseDetails = () => {
     const processEnrollment = async () => {
         setEnrolling(true);
         try {
-            const price = parseFloat(course.price) || 0;
-
-            // For free courses, enroll directly
-            if (price === 0) {
-                await api.post(`/enroll/${id}`);
-                setIsEnrolled(true);
-            } else {
-                setIsPaymentModalOpen(true);
-            }
+            const enrollmentsRef = collection(db, 'enrollments');
+            await addDoc(enrollmentsRef, {
+                student_id: user.uid,
+                course_id: id,
+                enrolled_at: new Date().toISOString()
+            });
+            setIsEnrolled(true);
         } catch (err) {
             console.error('Enrollment error:', err);
-            // Check if already enrolled
-            if (err.response?.data?.error === 'Already enrolled and paid' || err.response?.data?.message === 'Already enrolled and paid') {
-                setIsEnrolled(true);
-            } else {
-                alert('Failed to enroll: ' + (err.response?.data?.error || err.message));
-            }
+            alert('Failed to enroll.');
         }
         setEnrolling(false);
         setIsPaymentModalOpen(false);
@@ -82,17 +98,17 @@ const CourseDetails = () => {
     // Handle successful payment
     const handlePaymentComplete = async () => {
         try {
-            // Record payment
-            await api.post(`/record-payment/${id}`, {
+            const enrollmentsRef = collection(db, 'enrollments');
+            await addDoc(enrollmentsRef, {
+                student_id: user.uid,
+                course_id: id,
                 paymentId: `PAY${Date.now()}`,
-                amount: course.price
+                enrolled_at: new Date().toISOString()
             });
             setIsEnrolled(true);
             setIsPaymentModalOpen(false);
         } catch (err) {
             console.error('Payment recording error:', err);
-            // Still allow access for demo purposes
-            setIsEnrolled(true);
             setIsPaymentModalOpen(false);
         }
     };

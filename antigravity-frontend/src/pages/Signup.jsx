@@ -1,7 +1,8 @@
 import React, { useState, useContext } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
-import api from '../api/axiosConfig';
+import { db } from '../firebase';
+import { doc, getDoc } from 'firebase/firestore';
 
 const Signup = () => {
     const [name, setName] = useState('');
@@ -10,7 +11,7 @@ const Signup = () => {
     const [role, setRole] = useState('student');
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
-    const { login } = useContext(AuthContext);
+    const { signupEmail } = useContext(AuthContext);
     const navigate = useNavigate();
 
     const handleSubmit = async (e) => {
@@ -18,20 +19,14 @@ const Signup = () => {
         setError('');
         setSuccess('');
         try {
-            const res = await api.post('/auth/signup', { name, email, password, role });
-            if (res.data.user.status === 'pending') {
-                setSuccess('Account created successfully. Please wait for admin approval before logging in.');
-                setName(''); setEmail(''); setPassword('');
+            await signupEmail(name, email, password, role);
+            if (role === 'instructor') {
+                navigate('/instructor');
             } else {
-                login(res.data.user, res.data.token);
-                if (res.data.user.role === 'instructor') {
-                    navigate('/instructor');
-                } else {
-                    navigate('/dashboard');
-                }
+                navigate('/dashboard');
             }
         } catch (err) {
-            setError(err.response?.data?.error || 'Signup failed');
+            setError(err.message || 'Signup failed');
         }
     };
 
@@ -39,8 +34,10 @@ const Signup = () => {
         <div className="min-h-screen flex items-center justify-center bg-slate-900 border-t border-slate-800 py-12">
             <div className="max-w-md w-full bg-slate-800 rounded-xl shadow-2xl p-8 border border-slate-700">
                 <h2 className="text-3xl font-bold text-center text-white mb-8">Create Account</h2>
-                {error && <div className="bg-red-500/10 border border-red-500/50 text-red-500 rounded p-3 mb-4 text-sm text-center">{error}</div>}
-                {success && <div className="bg-green-500/10 border border-green-500/50 text-green-500 rounded p-3 mb-4 text-sm text-center">{success}</div>}
+
+                {error && <div className="bg-red-500/10 border border-red-500/50 text-red-500 rounded p-3 mb-6 text-sm text-center">{error}</div>}
+                {success && <div className="bg-green-500/10 border border-green-500/50 text-green-500 rounded p-3 mb-6 text-sm text-center">{success}</div>}
+
                 <form onSubmit={handleSubmit} className="space-y-5">
                     <div>
                         <label className="block text-sm font-medium text-slate-300 mb-1">Full Name</label>

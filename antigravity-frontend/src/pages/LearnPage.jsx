@@ -1,14 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import api from '../api/axiosConfig';
 import VideoPlayer from '../components/VideoPlayer';
 import { CheckCircle, Circle, ChevronLeft, ChevronRight, Menu, Lock, PlayCircle, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import AnimatedButton from '../components/ui/AnimatedButton';
+import { AuthContext } from '../context/AuthContext';
+
+import { db } from '../firebase';
+import { doc, getDoc, collection, getDocs, query, where, setDoc } from 'firebase/firestore';
 
 const LearnPage = () => {
     const { courseId, lessonId } = useParams();
     const navigate = useNavigate();
+    const { user } = useContext(AuthContext);
+    
     const [course, setCourse] = useState(null);
     const [currentLesson, setCurrentLesson] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -20,101 +25,137 @@ const LearnPage = () => {
     const [resumeTime, setResumeTime] = useState(0);
 
     const fetchProgress = async () => {
+        if (!user) return;
         try {
-            const progRes = await api.get(`/progress/${courseId}`);
-            setCompletedLessons(progRes.data);
-            const percRes = await api.get(`/progress/${courseId}/percentage`);
-            setProgressPercent(percRes.data.percentage || 0);
-        } catch (e) { }
+            const progRef = collection(db, `users/${user.uid}/progress`);
+            const progSnap = await getDocs(query(progRef, where('course_id', '==', courseId)));
+            
+            let completed = [];
+            progSnap.forEach(p => {
+                if (p.data().status === 'completed') completed.push(p.data().lesson_id);
+            });
+            setCompletedLessons(completed);
+            
+            if (course && course.total_lessons) {
+                setProgressPercent(Math.round((completed.length / course.total_lessons) * 100));
+            }
+        } catch (e) {
+            console.error('Progress fetch failed', e);
+        }
     };
 
     useEffect(() => {
         const fetchCourseAndLesson = async () => {
+            if (!user) return;
             try {
-                const courseRes = await api.get(`/courses/${courseId}/tree`);
-                setCourse(courseRes.data);
-
-                let targetLessonId = lessonId;
-                if (!targetLessonId) {
-                    targetLessonId = courseRes.data.sections?.[0]?.lessons?.[0]?.lesson_id;
-                    if (targetLessonId) {
-                        navigate(`/learn/${courseId}/${targetLessonId}`, { replace: true });
-                        return;
-                    }
-                }
-
-                if (targetLessonId) {
-                    // Get lesson from course tree first
-                    let lessonFromTree = null;
-                    if (courseRes.data && courseRes.data.sections) {
-                        for (const section of courseRes.data.sections) {
-                            const found = section.lessons?.find(l => l.lesson_id === targetLessonId);
-                            if (found) {
-                                lessonFromTree = found;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (lessonFromTree) {
-                        setCurrentLesson(lessonFromTree);
-                        api.get(`/progress/videos/${targetLessonId}`)
-                            .then(progRes => setResumeTime(progRes.data.last_position_seconds || 0))
-                            .catch(() => { });
-                    } else {
-                        try {
-                            const lessonRes = await api.get(`/lessons/${targetLessonId}`);
-                            if (lessonRes.data) {
-                                setCurrentLesson(lessonRes.data);
-                                const progRes = await api.get(`/progress/videos/${targetLessonId}`);
-                                setResumeTime(progRes.data.last_position_seconds || 0);
-                            }
-                        } catch (e) {
-                            console.error('Lesson API failed:', e);
-                        }
-                    }
-                }
-            } catch (err) {
-                if (err.response?.status === 402) {
-                    setError('Payment required to access this course. Please complete enrollment.');
-                } else if (err.response?.status === 403) {
+                // Check enrollment first
+                const enrollQ = query(collection(db, 'enrollments'), where('student_id', '==', user.uid), where('course_id', '==', courseId));
+                const enrollSnap = await getDocs(enrollQ);
+                if (enrollSnap.empty) {
                     setError('You are not enrolled in this course. Please enroll first.');
-                } else if (err.response?.status === 404) {
-                    setError('Course not found.');
-                } else {
-                    setError('Failed to load course: ' + (err.response?.data?.error || err.message));
+                    setLoading(false);
+                    return;
                 }
+
+                // Fetch full course tree
+                const courseDoc = await getDoc(doc(db, 'courses', courseId));
+                if (!courseDoc.exists()) throw new Error('Course not found');
+                
+                let courseData = { course_id: courseId, ...courseDoc.data(), sections: [] };
+                
+                const sectionsSnap = await getDocs(collection(db, `courses/${courseId}/sections`));
+                for (let secDoc of sectionsSnap.docs) {
+                    let secData = { section_id: secDoc.id, ...secDoc.data(), lessons: [] };
+                    const lessonsSnap = await getDocs(collection(db, `courses/${courseId}/sections/${secDoc.id}/lessons`));
+                    secData.lessons = lessonsSnap.docs.map(lDoc => ({ lesson_id: lDoc.id, ...lDoc.data() })).sort((a,b) => a.order - b.order);
+                    courseData.sections.push(secData);
+                }
+                courseData.sections.sort((a,b) => a.order_number - b.order_number);
+                
+                // Count total lessons
+                let tLessons = 0;
+                courseData.sections.forEach(s => tLessons += s.lessons.length);
+                courseData.total_lessons = tLessons;
+                setCourse(courseData);
+
+                // Determine target lesson
+                let targetLessonId = lessonId;
+                if (!targetLessonId && courseData.sections[0]?.lessons[0]) {
+                    targetLessonId = courseData.sections[0]?.lessons[0].lesson_id;
+                    navigate(`/learn/${courseId}/${targetLessonId}`, { replace: true });
+                    return;
+                }
+
+                // Find lesson and set neighbors
+                let foundLesson = null;
+                let prev = null, next = null;
+                let allLessons = courseData.sections.flatMap(s => s.lessons);
+                
+                for (let i = 0; i < allLessons.length; i++) {
+                    if (allLessons[i].lesson_id === targetLessonId) {
+                        foundLesson = { ...allLessons[i] };
+                        if (i > 0) prev = allLessons[i-1].lesson_id;
+                        if (i < allLessons.length - 1) next = allLessons[i+1].lesson_id;
+                        break;
+                    }
+                }
+
+                if (foundLesson) {
+                    foundLesson.previous_lesson_id = prev;
+                    foundLesson.next_lesson_id = next;
+                    setCurrentLesson(foundLesson);
+                    
+                    // fetch last position
+                    const progRef = doc(db, `users/${user.uid}/progress`, targetLessonId);
+                    const pDoc = await getDoc(progRef);
+                    if (pDoc.exists() && pDoc.data().last_position_seconds) {
+                        setResumeTime(pDoc.data().last_position_seconds);
+                    } else {
+                        setResumeTime(0);
+                    }
+                }
+
+                // Initial progress fetch
+                const progRef = collection(db, `users/${user.uid}/progress`);
+                const progSnap = await getDocs(query(progRef, where('course_id', '==', courseId)));
+                let completed = [];
+                progSnap.forEach(p => {
+                    if (p.data().status === 'completed') completed.push(p.data().lesson_id);
+                });
+                setCompletedLessons(completed);
+                setProgressPercent(Math.round((completed.length / tLessons) * 100) || 0);
+
+            } catch (err) {
+                setError('Failed to load course: ' + err.message);
             }
             setLoading(false);
-            api.get(`/progress/${courseId}`)
-                .then(progRes => {
-                    setCompletedLessons(progRes.data);
-                    return api.get(`/progress/${courseId}/percentage`);
-                })
-                .then(percRes => setProgressPercent(percRes.data.percentage || 0))
-                .catch(() => { });
         };
         fetchCourseAndLesson();
-    }, [courseId, lessonId, navigate]);
+    }, [courseId, lessonId, navigate, user]);
 
     const handleProgress = async (seconds) => {
-        if (!currentLesson?.lesson_id) return;
+        if (!currentLesson?.lesson_id || !user) return;
         try {
-            await api.post(`/progress/${currentLesson.lesson_id}`, {
+            await setDoc(doc(db, `users/${user.uid}/progress`, currentLesson.lesson_id), {
                 course_id: courseId,
+                lesson_id: currentLesson.lesson_id,
                 last_position_seconds: seconds,
-            });
+                updated_at: new Date().toISOString()
+            }, { merge: true });
         } catch (e) { }
     };
 
     const handleMarkComplete = async (seconds) => {
-        if (!currentLesson?.lesson_id) return;
+        if (!currentLesson?.lesson_id || !user) return;
         try {
-            await api.post(`/progress/${currentLesson.lesson_id}`, {
+            await setDoc(doc(db, `users/${user.uid}/progress`, currentLesson.lesson_id), {
                 course_id: courseId,
+                lesson_id: currentLesson.lesson_id,
+                status: 'completed',
                 last_position_seconds: seconds || 0,
-                is_completed: true
-            });
+                updated_at: new Date().toISOString()
+            }, { merge: true });
+            
             fetchProgress();
 
             if (currentLesson.next_lesson_id) {

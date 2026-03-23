@@ -22,7 +22,7 @@ function App() {
     return (
         <AuthProvider>
             <Router>
-                <div className="min-h-screen bg-[#030712] font-sans selection:bg-indigo-500/30">
+                <div className="min-h-screen bg-[#0b1121] font-sans selection:bg-sky-500/30">
                     <PremiumNavbar />
                     {/* The padding top prevents content from hiding behind the fixed navbar */}
                     <main className="pt-20">

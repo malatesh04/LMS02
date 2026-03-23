@@ -1,11 +1,33 @@
 @import "tailwindcss";
 
+@theme {
+  --color-indigo-50: #f0fdfa;
+  --color-indigo-100: #ccfbf1;
+  --color-indigo-200: #99f6e4;
+  --color-indigo-300: #5eead4;
+  --color-indigo-400: #2dd4bf;
+  --color-indigo-500: #14b8a6;
+  --color-indigo-600: #0d9488;
+  --color-indigo-700: #0f766e;
+  --color-indigo-800: #115e59;
+  --color-indigo-900: #134e4a;
+
+  --color-purple-300: #67e8f9;
+  --color-purple-400: #22d3ee;
+  --color-purple-500: #06b6d4;
+  --color-purple-600: #0891b2;
+
+  --color-emerald-400: #facc15;
+  --color-emerald-500: #eab308;
+  --color-emerald-600: #ca8a04;
+}
+
 @layer base {
   body {
-    background-color: #030712;
+    background-color: #0b1121;
     background-image: 
-      radial-gradient(circle at top right, rgba(99, 102, 241, 0.12) 0%, transparent 40%),
-      radial-gradient(circle at bottom left, rgba(139, 92, 246, 0.1) 0%, transparent 40%);
+      radial-gradient(ellipse at top, rgba(30, 58, 138, 0.3) 0%, transparent 60%),
+      radial-gradient(circle at bottom left, rgba(14, 165, 233, 0.15) 0%, transparent 50%);
     background-attachment: fixed;
     color: #f8fafc;
     margin: 0;

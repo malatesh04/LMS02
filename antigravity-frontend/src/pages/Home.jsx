@@ -3,10 +3,11 @@ import { motion } from 'framer-motion';
 import { BookOpen, Sparkles, Brain, ArrowRight, Star, Code, PlayCircle } from 'lucide-react';
 import AnimatedButton from '../components/ui/AnimatedButton';
 import GlassCard from '../components/ui/GlassCard';
-import api from '../api/axiosConfig';
 import { Link } from 'react-router-dom';
 
 import { AuthContext } from '../context/AuthContext';
+import { db } from '../firebase';
+import { collection, getDocs, limit, query, where, orderBy } from 'firebase/firestore';
 
 const Home = () => {
     const { user } = useContext(AuthContext);
@@ -15,10 +16,15 @@ const Home = () => {
     useEffect(() => {
         const fetchTrending = async () => {
             try {
-                // Fetch random or highly rated courses to simulate trending
-                const res = await api.get('/courses');
-                // just pick top 3
-                setTrending(res.data.slice(0, 3));
+                // Fetch top published courses from Firestore
+                const q = query(
+                    collection(db, 'courses'), 
+                    where('is_published', '==', true), 
+                    limit(3)
+                );
+                const snapshot = await getDocs(q);
+                const courses = snapshot.docs.map(doc => ({ course_id: doc.id, ...doc.data() }));
+                setTrending(courses);
             } catch (err) {
                 console.error(err);
             }
@@ -57,15 +63,15 @@ const Home = () => {
                 >
                     <motion.div variants={itemVariants} className="mb-6 flex items-center gap-2 px-4 py-2 rounded-full border border-indigo-500/30 bg-indigo-500/10 backdrop-blur-md">
                         <Sparkles size={16} className="text-indigo-400" />
-                        <span className="text-sm font-medium text-indigo-300">Introducing Hell Paradise LMS 2.0</span>
+                        <span className="text-sm font-medium text-indigo-300">Introducing LMS02 2.0</span>
                     </motion.div>
 
                     <motion.h1 
                         variants={itemVariants} 
                         className="text-5xl md:text-7xl font-extrabold tracking-tight text-white mb-6 leading-[1.1]"
                     >
-                        The Future of Learning is <br/>
-                        <span className="text-gradient">Intelligent</span>
+                        Smarter learning is <br/>
+                        <span className="text-gradient">the future</span>
                     </motion.h1>
 
                     <motion.p variants={itemVariants} className="text-lg md:text-xl text-slate-400 mb-10 max-w-2xl leading-relaxed">

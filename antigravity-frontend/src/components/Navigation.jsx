@@ -20,11 +20,11 @@ const Navigation = () => {
         <nav className="bg-slate-900 border-b border-slate-800 px-6 py-4">
             <div className="max-w-7xl mx-auto flex justify-between items-center">
                 <Link to="/" className="flex items-center gap-2 text-xl font-bold text-white">
-                    <img src={logoImg} alt="Hell Paradise Logo" className="w-10 h-10 rounded-full object-cover" onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }} />
+                    <img src={logoImg} alt="LMS02 Logo" className="w-10 h-10 rounded-full object-cover" onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }} />
                     <div className="hidden w-8 h-8 rounded bg-red-800 items-center justify-center">
-                        <span className="text-white">HP</span>
+                        <span className="text-white">LMS</span>
                     </div>
-                    Hell Paradise LMS
+                    LMS02
                 </Link>
 
                 <div className="flex items-center gap-6">
@@ -65,7 +65,7 @@ const Navigation = () => {
                                                 </div>
                                                 <div>
                                                     <h4 className="text-white text-sm font-medium mb-1">Welcome back, {user.name}!</h4>
-                                                    <p className="text-slate-400 text-xs line-clamp-2">You successfully logged in to Hell Paradise LMS. Let's continue learning!</p>
+                                                    <p className="text-slate-400 text-xs line-clamp-2">You successfully logged in to LMS02. Let's continue learning!</p>
                                                     <p className="text-slate-500 text-xs mt-2">{loginTime}</p>
                                                 </div>
                                             </div>

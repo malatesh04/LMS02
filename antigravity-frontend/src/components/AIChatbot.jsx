@@ -74,11 +74,11 @@ const AIChatbot = () => {
                 },
                 {
                     keywords: ['hello', 'hi', 'hey', 'greetings', 'yo'],
-                    response: "Hello there! I am your Hell Paradise AI Assistant. Ask me anything about signing up, finding courses, payments, or your dashboard!"
+                    response: "Hello there! I am your LMS02 AI Assistant. Ask me anything about signing up, finding courses, payments, or your dashboard!"
                 },
                 {
                     keywords: ['who are you', 'what are you', 'bot', 'assistant'],
-                    response: "I'm the Hell Paradise AI Assistant! I exist solely to help you navigate this platform and understand its features."
+                    response: "I'm the LMS02 AI Assistant! I exist solely to help you navigate this platform and understand its features."
                 }
             ];
 

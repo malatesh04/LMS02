@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import api from '../api/axiosConfig';
 import CourseCard from '../components/CourseCard';
 import { AuthContext } from '../context/AuthContext';
 import { Search, X, Loader2, Bell } from 'lucide-react';
 import { motion } from 'framer-motion';
+
+import { db } from '../firebase';
+import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
 
 const CourseListing = () => {
     const { user } = React.useContext(AuthContext);
@@ -18,9 +20,11 @@ const CourseListing = () => {
     useEffect(() => {
         const fetchCourses = async () => {
             try {
-                const res = await api.get('/courses');
-                setCourses(res.data);
-                setFilteredCourses(res.data);
+                const q = query(collection(db, 'courses'), where('is_published', '==', true));
+                const snapshot = await getDocs(q);
+                const fetchedCourses = snapshot.docs.map(doc => ({ course_id: doc.id, ...doc.data() }));
+                setCourses(fetchedCourses);
+                setFilteredCourses(fetchedCourses);
             } catch (err) {
                 console.error('Error fetching courses:', err);
             }
@@ -38,19 +42,14 @@ const CourseListing = () => {
             }
 
             setSearching(true);
-            try {
-                const res = await api.get(`/courses/search?q=${encodeURIComponent(searchQuery)}`);
-                setFilteredCourses(res.data);
-            } catch (err) {
-                const query = searchQuery.toLowerCase();
-                const filtered = courses.filter(course =>
-                    course.title.toLowerCase().includes(query) ||
-                    course.description?.toLowerCase().includes(query) ||
-                    course.category?.toLowerCase().includes(query) ||
-                    course.instructor_name?.toLowerCase().includes(query)
-                );
-                setFilteredCourses(filtered);
-            }
+            const queryText = searchQuery.toLowerCase();
+            const filtered = courses.filter(course =>
+                course.title?.toLowerCase().includes(queryText) ||
+                course.description?.toLowerCase().includes(queryText) ||
+                course.category?.toLowerCase().includes(queryText) ||
+                course.instructor_name?.toLowerCase().includes(queryText)
+            );
+            setFilteredCourses(filtered);
             setSearching(false);
         };
 
@@ -86,7 +85,7 @@ const CourseListing = () => {
                             <Bell size={24} className="animate-pulse" />
                         </div>
                         <div>
-                            <h3 className="text-white font-bold text-lg">Welcome to Hell Paradise LMS, {user.name}!</h3>
+                            <h3 className="text-white font-bold text-lg">Welcome to LMS02, {user.name}!</h3>
                             <p className="text-slate-400 text-sm mt-1">Start exploring our premium, AI-curated courses below.</p>
                         </div>
                     </div>

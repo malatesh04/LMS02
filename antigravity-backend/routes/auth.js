@@ -7,6 +7,25 @@ const { authMiddleware } = require('../middleware/auth');
 
 const router = express.Router();
 
+// Initialize Firebase Admin (lazy init — only once)
+let adminAuth = null;
+const getAdminAuth = () => {
+    if (!adminAuth) {
+        const admin = require('firebase-admin');
+        if (!admin.apps.length) {
+            admin.initializeApp({
+                credential: admin.credential.cert({
+                    projectId: process.env.FIREBASE_PROJECT_ID || 'lms02-34551',
+                    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+                    privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+                })
+            });
+        }
+        adminAuth = admin.auth();
+    }
+    return adminAuth;
+};
+
 const generateTokens = async (userId, email, role) => {
     try {
         // Debug: ensure JWT_SECRET3 is available
@@ -253,4 +272,74 @@ router.get('/me', authMiddleware, async (req, res) => {
     }
 });
 
+// Google Sign-In / Sign-Up via Firebase ID token
+router.post('/google', async (req, res) => {
+    try {
+        const { idToken } = req.body;
+        if (!idToken) return res.status(400).json({ error: 'No ID token provided' });
+
+        // Verify the Firebase token
+        let decodedToken;
+        try {
+            const firebaseAuth = getAdminAuth();
+            decodedToken = await firebaseAuth.verifyIdToken(idToken);
+        } catch (err) {
+            console.error('Firebase token verification failed:', err.message);
+            return res.status(401).json({ error: 'Invalid Firebase token' });
+        }
+
+        const { uid, email, name, picture } = decodedToken;
+
+        if (!email) return res.status(400).json({ error: 'Email not provided by Google' });
+
+        // Check if user already exists
+        let userResult = await db.query('SELECT * FROM users WHERE email = $1', [email]);
+
+        let user;
+        if (userResult.rows.length > 0) {
+            user = userResult.rows[0];
+            // Update profile image if Google provides one and we don't have one yet
+            if (picture && !user.profile_image_url) {
+                await db.query('UPDATE users SET profile_image_url = $1 WHERE user_id = $2', [picture, user.user_id]);
+                user.profile_image_url = picture;
+            }
+        } else {
+            // Create new user (Google sign-up)
+            const newUser = await db.query(
+                `INSERT INTO users (name, email, password_hash, role, status, profile_image_url)
+                 VALUES ($1, $2, $3, 'student', 'approved', $4)
+                 RETURNING user_id, name, email, role, status, profile_image_url`,
+                [name || email.split('@')[0], email, uid, picture || null]
+            );
+            user = newUser.rows[0];
+        }
+
+        if (user.status === 'pending') {
+            return res.status(403).json({ error: 'Account pending admin approval' });
+        }
+        if (user.status === 'blocked') {
+            return res.status(403).json({ error: 'Account has been blocked' });
+        }
+
+        const { accessToken, refreshTokenString } = await generateTokens(user.user_id, user.email, user.role);
+        setRefreshCookie(res, refreshTokenString);
+
+        res.json({
+            token: accessToken,
+            user: {
+                user_id: user.user_id,
+                name: user.name,
+                email: user.email,
+                role: user.role,
+                status: user.status,
+                profile_image_url: user.profile_image_url
+            }
+        });
+    } catch (err) {
+        console.error('GOOGLE AUTH ERROR:', err);
+        res.status(500).json({ error: 'Server error', details: err.message });
+    }
+});
+
 module.exports = router;
+

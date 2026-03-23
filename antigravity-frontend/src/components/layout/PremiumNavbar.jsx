@@ -46,7 +46,7 @@ const PremiumNavbar = () => {
                     <div className="absolute inset-0 bg-indigo-500 blur-xl opacity-0 group-hover:opacity-40 transition-opacity duration-500 rounded-full" />
                     <img 
                         src={logoImg} 
-                        alt="Hell Paradise Logo" 
+                        alt="LMS02 Logo" 
                         className="w-10 h-10 rounded-full object-cover shadow-lg relative z-10" 
                         onError={(e) => { 
                             e.target.style.display = 'none'; 
@@ -54,10 +54,10 @@ const PremiumNavbar = () => {
                         }} 
                     />
                     <div className="hidden w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-emerald-500 items-center justify-center shadow-lg relative z-10">
-                        <span className="text-white font-bold text-lg">HP</span>
+                        <span className="text-white font-bold text-lg">LMS</span>
                     </div>
                     <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400 group-hover:to-white transition-all tracking-tight">
-                        Hell Paradise
+                        LMS02
                     </span>
                 </Link>
 
@@ -145,7 +145,7 @@ const PremiumNavbar = () => {
                                                         </div>
                                                         <div>
                                                             <h4 className="text-white text-sm font-medium mb-1 truncate">Welcome, {user.name}!</h4>
-                                                            <p className="text-slate-400 text-xs line-clamp-2 leading-relaxed">You successfully logged in to Hell Paradise. Let's continue learning!</p>
+                                                            <p className="text-slate-400 text-xs line-clamp-2 leading-relaxed">You successfully logged in to LMS02. Let's continue learning!</p>
                                                             <p className="text-slate-500 text-[10px] mt-2 font-medium">{loginTime}</p>
                                                         </div>
                                                     </div>
