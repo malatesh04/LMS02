@@ -1,0 +1,34 @@
+{
+    "version": 2,
+    "builds": [
+        {
+            "src": "antigravity-frontend/package.json",
+            "use": "@vercel/static-build",
+            "config": {
+                "distDir": "dist"
+            }
+        },
+        {
+            "src": "antigravity-backend/api/index.js",
+            "use": "@vercel/node"
+        }
+    ],
+    "rewrites": [
+        {
+            "source": "/api/(.*)",
+            "destination": "/antigravity-backend/api/index.js"
+        },
+        {
+            "source": "/assets/(.*)",
+            "destination": "/antigravity-frontend/assets/$1"
+        },
+        {
+            "source": "/(.*\\.[a-zA-Z0-9]+)$",
+            "destination": "/antigravity-frontend/$1"
+        },
+        {
+            "source": "/(.*)",
+            "destination": "/antigravity-frontend/index.html"
+        }
+    ]
+}
